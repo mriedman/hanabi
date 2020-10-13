@@ -34,9 +34,7 @@ class HanabiMDP(object):
         #     A 5 means that the stack is finished and no more cards can be played on it
         #  -- The fourth element is the index of the player whose turn it is
         #  -- The fifth element is the cards remaining in the deck (not played or in a player's hand)
-        #  -- The sixth element is a hint if one was given on the previous turn and otherwise None
-        #     A hint is of the form (playerIndex, number (0) or color (1), which number/color)
-        #     For example, (1, 0, 2) means Player 1 was told which of their cards are 2's.
+        #  -- The sixth element is the previous action
 
         def drawCard() -> int:
             # This will help us select players' initial hands by selecting a random card and removing it from the deck
@@ -115,7 +113,7 @@ class HanabiMDP(object):
                     newDeck = list(state[5])
                     newDeck[cardIndex] = (newDeck[cardIndex][0], newDeck[cardIndex][1] - 1)
                     newPlayer = (state[4] + 1) % self.players
-                    newState = (allPlayerHands, blueChips, redChips, tuple(newNextCards), newPlayer, newDeck, None)
+                    newState = (allPlayerHands, blueChips, redChips, tuple(newNextCards), newPlayer, newDeck, action)
                     newStateList.append((newState, card[1] / numCardsRemaining, reward))
             return newStateList
         if action[0] == 1:
@@ -123,6 +121,6 @@ class HanabiMDP(object):
             if blueChips == -1:
                 raise ValueError("Hint Not Allowed")
             newPlayer = (state[4] + 1) % self.players
-            newState = (state[0], blueChips, state[2], state[3], newPlayer, state[5], action[1:])
+            newState = (state[0], blueChips, state[2], state[3], newPlayer, state[5], action)
             return [(newState, 1, 0)]
         raise ValueError("Invalid Action Given")
