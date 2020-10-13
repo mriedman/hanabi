@@ -33,8 +33,10 @@ class HanabiMDP(object):
         #  -- The third element is the next card that may be placed on each stack
         #     A 5 means that the stack is finished and no more cards can be played on it
         #  -- The fourth element is the index of the player whose turn it is
-        #  -- The fifth element is a tuple of past actions
-        #  -- The sixth element is the cards remaining in the deck (not played or in a player's hand)
+        #  -- The fifth element is the cards remaining in the deck (not played or in a player's hand)
+        #  -- The sixth element is a hint if one was given on the previous turn and otherwise None
+        #     A hint is of the form (playerIndex, number (0) or color (1), which number/color)
+        #     For example, (1, 0, 2) means Player 1 was told which of their cards are 2's.
 
         def drawCard() -> int:
             # This will help us select players' initial hands by selecting a random card and removing it from the deck
@@ -50,7 +52,7 @@ class HanabiMDP(object):
         for _ in range(self.players):
             nextHand = [drawCard() for __ in range(self.cardsPerHand)]
             playerHands.append(tuple(nextHand))
-        return (tuple(playerHands), 8, 0, 0, (0,) * self.colors, (), tuple(tuple(i) for i in self.deck))
+        return (tuple(playerHands), 8, 0, 0, (0,) * self.colors, tuple(tuple(i) for i in self.deck), None)
 
     def actions(self, state: Tuple) -> List[Tuple]:
         """
@@ -70,7 +72,7 @@ class HanabiMDP(object):
         #  2:Discard a card
         #    Second element is the index of the card the player discarded
         actionList = []
-        cardsRemaining = sum(i[1] for i in state[6])
+        cardsRemaining = sum(i[1] for i in state[5])
         if cardsRemaining == 0:
             return actionList
         if state[1] > 0:  # Blue chips are still in play
@@ -80,7 +82,7 @@ class HanabiMDP(object):
                         actionList.append((1, player, 0, number))
                     for color in range(self.colors):
                         actionList.append((1, player, 1, color))
-        for i in range(len(self.multiplicities)):
+        for i in range(self.cardsPerHand):
             actionList.append((0, i))
             actionList.append((2, i))
         return actionList
@@ -90,19 +92,37 @@ class HanabiMDP(object):
         #  corresponding to the states reachable from |state| when taking |action|.
         #  * Indicate a terminal state (after quitting, busting, or running out of cards)
         #    by setting the deck to None.
-        newActionHistory = (action,) + state[5]
-        numCardsRemaining = sum(i[1] for i in state[6])
-        if action[0] == 0:
+        numCardsRemaining = sum(i[1] for i in state[5])
+        if action[0] == 0 or 2:
             playerHand = state[0][state[4]]
             playerCard = playerHand[action[1]]
             reward = 0
-            if state[3][playerCard[1]] == playerCard[0]:
+            redChips = state[2]
+            blueChips = state[1]
+            newNextCards = list(state[3])
+            if action[0] == 0 and state[3][playerCard[1]] == playerCard[0]:
                 reward = 1
-            #  TODO: finish writing successor state for playing a card
-            return
+                newNextCards[playerCard[1]] += 1
+            elif action[0] == 0:
+                redChips += 1
+            elif action[0] == 2:
+                blueChips = min(self.blueTokens, blueChips + 1)
+            newStateList = []
+            for cardIndex, card in enumerate(state[5]):
+                if card[1] > 0:
+                    newPlayerHand = playerHand[:action[1]] + (card[0],) + playerHand[action[1] + 1:]
+                    allPlayerHands = state[0][:state[4]] + newPlayerHand + state[0][state[4] + 1:]
+                    newDeck = list(state[5])
+                    newDeck[cardIndex] = (newDeck[cardIndex][0], newDeck[cardIndex][1] - 1)
+                    newPlayer = (state[4] + 1) % self.players
+                    newState = (allPlayerHands, blueChips, redChips, tuple(newNextCards), newPlayer, newDeck, None)
+                    newStateList.append((newState, card[1] / numCardsRemaining, reward))
+            return newStateList
         if action[0] == 1:
-            return
-        if action[0] == 2:
-            return
-        #  TODO: Finish writing successor state for other actions
+            blueChips = state[1] - 1
+            if blueChips == -1:
+                raise ValueError("Hint Not Allowed")
+            newPlayer = (state[4] + 1) % self.players
+            newState = (state[0], blueChips, state[2], state[3], newPlayer, state[5], action[1:])
+            return [(newState, 1, 0)]
         raise ValueError("Invalid Action Given")
