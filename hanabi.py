@@ -1,8 +1,10 @@
 from typing import List, Tuple, Dict, Any
 from random import random
+from copy import deepcopy
+from util import MDP
 
 
-class HanabiMDP(object):
+class HanabiMDP(MDP):
     def __init__(self, multiplicities: List, colors: int, blueTokens: int, redTokens: int, players: int, cardsPerHand: int):
         """
         :param multiplicities: number of each card (default: [3,2,2,2,1])
@@ -10,7 +12,7 @@ class HanabiMDP(object):
         :param blueTokens: number of blue information tokens (default: 8)
         :param redTokens: number of red tokens (default: 3)
         :param players: number of players
-        :param cardsPerHand: number of cards in a player's hand
+        :param cardsPerHand: number of cards in a player's hand (default: 5)
         """
         self.multiplicities = multiplicities
         self.colors = colors
@@ -23,7 +25,7 @@ class HanabiMDP(object):
         self.deck = []
         for num, count in enumerate(multiplicities):
             for color in range(colors):
-                self.deck.append([(num + 1, color), count])
+                self.deck.append([(num, color), count])
 
     def startState(self) -> Tuple:
         #  -- The zeroth element is a tuple of each player's hand
@@ -35,13 +37,18 @@ class HanabiMDP(object):
         #  -- The fourth element is the index of the player whose turn it is
         #  -- The fifth element is the cards remaining in the deck (not played or in a player's hand)
         #  -- The sixth element is the previous action
+        #  -- AFTER the DEFAULT deriveDataFromGameState() (which strips information not known by the player)
+        #       The seventh element None if the previous action was not a hint given to the player
+        #       If it was, it is a tuple containing the hint and the indices of the cards it applies to
+        #       Ex: (0, 2, (3, 4)) means the 3rd and 4th cards in a player's hand have the number 2
 
+        copyDeck = deepcopy(self.deck)
         def drawCard() -> int:
             # This will help us select players' initial hands by selecting a random card and removing it from the deck
-            cardsRemaining = sum(i[1] for i in self.deck)
+            cardsRemaining = sum(i[1] for i in copyDeck)
             cardLocation = int(random()*cardsRemaining)
             cardsSeen = 0
-            for card in self.deck:
+            for card in copyDeck:
                 cardsSeen += card[1]
                 if cardsSeen > cardLocation:
                     card[1] -= 1
@@ -50,7 +57,7 @@ class HanabiMDP(object):
         for _ in range(self.players):
             nextHand = [drawCard() for __ in range(self.cardsPerHand)]
             playerHands.append(tuple(nextHand))
-        return (tuple(playerHands), 8, 0, 0, (0,) * self.colors, tuple(tuple(i) for i in self.deck), None)
+        return (tuple(playerHands), 8, 0, (0,) * self.colors, 0, tuple(tuple(i) for i in copyDeck), None)
 
     def actions(self, state: Tuple) -> List[Tuple]:
         """
@@ -64,8 +71,8 @@ class HanabiMDP(object):
         #  1:Use a blue chip
         #    Second element is the player the hint is given to
         #    Third element is:
-        #    0: A number hint is being given
-        #    1: A color hint is being given
+        #      0: A number hint is being given
+        #      1: A color hint is being given
         #    Fourth element is which number/color
         #  2:Discard a card
         #    Second element is the index of the card the player discarded
@@ -90,8 +97,9 @@ class HanabiMDP(object):
         #  corresponding to the states reachable from |state| when taking |action|.
         #  * Indicate a terminal state (after quitting, busting, or running out of cards)
         #    by setting the deck to None.
+        #  TODO: Add terminal state indicator
         numCardsRemaining = sum(i[1] for i in state[5])
-        if action[0] == 0 or 2:
+        if action[0] == 0 or action[0] == 2:
             playerHand = state[0][state[4]]
             playerCard = playerHand[action[1]]
             reward = 0
@@ -108,8 +116,8 @@ class HanabiMDP(object):
             newStateList = []
             for cardIndex, card in enumerate(state[5]):
                 if card[1] > 0:
-                    newPlayerHand = playerHand[:action[1]] + (card[0],) + playerHand[action[1] + 1:]
-                    allPlayerHands = state[0][:state[4]] + newPlayerHand + state[0][state[4] + 1:]
+                    newPlayerHand = (card[0],) + playerHand[:action[1]] + playerHand[action[1] + 1:]
+                    allPlayerHands = state[0][:state[4]] + (newPlayerHand,) + state[0][state[4] + 1:]
                     newDeck = list(state[5])
                     newDeck[cardIndex] = (newDeck[cardIndex][0], newDeck[cardIndex][1] - 1)
                     newPlayer = (state[4] + 1) % self.players
