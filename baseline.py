@@ -1,62 +1,78 @@
-from hanabi import HanabiMDP
-from util import *
+from hanabi_learning_environment.rl_env import Agent
+from run_game import run_game
+from hanabi_learning_environment import pyhanabi
 
+from typing import *
 
-class InternalStateAgent(HanabiAgent):
-    def __init__(self, playerIndex: int):
-        super().__init__(playerIndex)
-        self.cardsPerHand = 5
-        self.cardInfo = [[-1, -1] for _ in range(self.cardsPerHand)]
+class BaselineAgent(Agent):
 
-    def getAction(self, state: Tuple) -> Any:
-        #  If there is a playable card, play it
-        for i, j in enumerate(self.cardInfo):
-            if not -1 in j:
-                if state[3][j[1]] == j[0]:
-                    return (0, i)
-        #  If there is a discard-able card, discard it
-        for i, j in enumerate(self.cardInfo):
-            if not -1 in j:
-                if state[3][j[1]] > j[0]:
-                    return (2, i)
-        #  If another player has a playable card and there is a blue token, give them a hint
-        #  If there are multiple, pick one at random
-        if state[1] > 0:
-            possibleHints = []
-            for i, j in enumerate(state[0]):
-                if j == ():
-                    continue
-                for k, card in enumerate(j):
-                    if state[3][card[1]] == card[0]:
-                        l = random.randint(0, 1)
-                        possibleHints.append((1, i, l, card[l]))
-            if len(possibleHints) > 0:
-                return random.choice(possibleHints)
-            #  If there are no playable cards, give a random hint
-            for i, j in enumerate(state[0]):
-                if j == ():
-                    continue
-                for k, card in enumerate(j):
-                    l = random.randint(0, 1)
-                    possibleHints.append((1, i, l, card[l]))
-            return random.choice(possibleHints)
-        #  Discard at random
-        return (2, random.randint(0, 4))
+    def __init__(self, config):
+        # Initialize
+        self.config = config
+        # Extract max info tokens or set default to 8.
+        self.max_information_tokens = config.get('information_tokens', 8)
 
-    def update(self, state: Tuple) -> None:
-        newHint = state[7]
-        if newHint is not None:
-            #  The player is given a hint
-            for card in newHint[2]:
-                self.cardInfo[card][newHint[0]] = newHint[1]
-        if state[4] == self.playerIndex and state[6] is not None and state[6][0] != 1:
-            #  The player has played or discarded a card
-            self.cardInfo = [[-1, -1]] + self.cardInfo[:state[6][1]] + self.cardInfo[state[6][1] + 1:]
+    @staticmethod
+    def playable_card(card, fireworks):
+        """A card is playable if it can be placed on the fireworks pile."""
+        return card.rank() == fireworks[card.color()]
 
+    def act(self, observation: pyhanabi.HanabiObservation):
+        """Act based on an observation."""
+        if observation.cur_player_offset() != 0:
+            return None
 
-mdp = HanabiMDP([3, 2, 2, 2, 1], 5, 8, 3, 2, 5)
-agentList = [InternalStateAgent(i) for i in range(2)]
-results = simulate(mdp, agentList, 1000)
-print(sum(results)/1000)
-print(max(results))
-print(min(results))
+        # Check if there are any pending hints and play the card corresponding to
+        # the hint.
+        print(observation.legal_moves())
+        print(pyhanabi.HanabiMove.get_reveal_color_move(1, 1) == pyhanabi.HanabiMove.get_reveal_color_move(1, 1))
+
+        for card_index, hint in enumerate(observation.card_knowledge()[0]):
+            if hint.color() is not None and hint.rank() is not None:
+                if observation.card_playable_on_fireworks(hint.color(),hint.rank()):
+                    move = pyhanabi.HanabiMove.get_play_move(card_index)
+                    '''for i in observation.legal_moves():
+                        if i.type() == move.type() and i.card_index()==move.card_index():
+                            return i'''
+                    if move in observation.legal_moves() or True:
+                        return move
+
+        # Check if it's possible to hint a card to your colleagues.
+        fireworks = observation.fireworks()
+        if observation.information_tokens() > 0:
+            # Check if there are any playable cards in the hands of the opponents.
+            for player_offset in range(1, observation.num_players()):
+                player_hand = observation.observed_hands()[player_offset]
+                player_hints = observation.card_knowledge()[player_offset]
+                # Check if the card in the hand of the opponent is playable.
+                for card, hint in zip(player_hand, player_hints):
+                    if BaselineAgent.playable_card(card,
+                                                 fireworks) and hint.color() is None:
+                        move = pyhanabi.HanabiMove.get_reveal_color_move(player_offset, card.color())
+                        for i in observation.legal_moves():
+                            if i.type()==move.type() and i.target_offset()==move.target_offset() and i.color()==move.color:
+                                return i
+                        if move in observation.legal_moves() or True:
+                            return move
+                        else:
+                            print('aaaaa')
+                            print(type(move))
+                            print(move)
+                            raise ValueError
+                    if BaselineAgent.playable_card(card,
+                                                 fireworks) and hint.rank() is None:
+                        move = pyhanabi.HanabiMove.get_reveal_rank_move(player_offset, card.rank())
+                        for i in observation.legal_moves():
+                            if i.type()==move.type() and i.target_offset()==move.target_offset() and i.rank()==move.rank():
+                                return i
+                        if move in observation.legal_moves() or True:
+                            return move.to_dict()
+
+        # If no card is hintable then discard or play.
+        for i in observation.legal_moves():
+            if i.type()==pyhanabi.HanabiMoveType.DISCARD:
+                return i
+        print('???')
+        return observation.legal_moves()[0]
+
+run_game({},[BaselineAgent({}) for _ in range(2)])
