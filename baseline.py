@@ -1,5 +1,5 @@
 from hanabi_learning_environment.rl_env import Agent
-from run_game import run_game
+#from run_game import run_game
 from hanabi_learning_environment import pyhanabi
 
 from typing import *
@@ -7,6 +7,7 @@ from typing import *
 class BaselineAgent(Agent):
 
     def __init__(self, config):
+        #super(BaselineAgent, self).__init__(config)
         # Initialize
         self.config = config
         # Extract max info tokens or set default to 8.
@@ -24,18 +25,12 @@ class BaselineAgent(Agent):
 
         # Check if there are any pending hints and play the card corresponding to
         # the hint.
-        print(observation.legal_moves())
-        print(pyhanabi.HanabiMove.get_reveal_color_move(1, 1) == pyhanabi.HanabiMove.get_reveal_color_move(1, 1))
 
         for card_index, hint in enumerate(observation.card_knowledge()[0]):
             if hint.color() is not None and hint.rank() is not None:
                 if observation.card_playable_on_fireworks(hint.color(),hint.rank()):
                     move = pyhanabi.HanabiMove.get_play_move(card_index)
-                    '''for i in observation.legal_moves():
-                        if i.type() == move.type() and i.card_index()==move.card_index():
-                            return i'''
-                    if move in observation.legal_moves() or True:
-                        return move
+                    return move
 
         # Check if it's possible to hint a card to your colleagues.
         fireworks = observation.fireworks()
@@ -52,27 +47,19 @@ class BaselineAgent(Agent):
                         for i in observation.legal_moves():
                             if i.type()==move.type() and i.target_offset()==move.target_offset() and i.color()==move.color:
                                 return i
-                        if move in observation.legal_moves() or True:
-                            return move
-                        else:
-                            print('aaaaa')
-                            print(type(move))
-                            print(move)
-                            raise ValueError
+                        return move
                     if BaselineAgent.playable_card(card,
                                                  fireworks) and hint.rank() is None:
                         move = pyhanabi.HanabiMove.get_reveal_rank_move(player_offset, card.rank())
                         for i in observation.legal_moves():
                             if i.type()==move.type() and i.target_offset()==move.target_offset() and i.rank()==move.rank():
                                 return i
-                        if move in observation.legal_moves() or True:
-                            return move.to_dict()
+                        return move.to_dict()
 
         # If no card is hintable then discard or play.
         for i in observation.legal_moves():
             if i.type()==pyhanabi.HanabiMoveType.DISCARD:
                 return i
-        print('???')
         return observation.legal_moves()[0]
 
-run_game({},[BaselineAgent({}) for _ in range(2)])
+#run_game({},[BaselineAgent({}) for _ in range(2)],2)
