@@ -13,11 +13,11 @@
 # limitations under the License.
 
 from __future__ import print_function
-from baseline import BaselineAgent
-from random import RandomAgent
+from baseline_agent import BaselineAgent
+from random_agent import RandomAgent
 import sys
 import argparse
-from time import time
+import numpy as np
 
 #import numpy as np
 from hanabi_learning_environment import pyhanabi

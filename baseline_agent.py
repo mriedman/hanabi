@@ -60,6 +60,6 @@ class BaselineAgent(Agent):
         for i in observation.legal_moves():
             if i.type()==pyhanabi.HanabiMoveType.DISCARD:
                 return i
-        return observation.legal_moves()[0]
+        return observation.legal_moves()[-1]
 
 #run_game({},[BaselineAgent({}) for _ in range(2)],2)
