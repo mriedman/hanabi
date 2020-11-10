@@ -15,15 +15,18 @@
 from __future__ import print_function
 from baseline_agent import BaselineAgent
 from random_agent import RandomAgent
+from card_identifier import CardIdentifierAgent
 import sys
 import argparse
+from random import seed
 import numpy as np
+from rl_env import Runner
 
-#import numpy as np
+
 from hanabi_learning_environment import pyhanabi
 
 
-def run_game(game_parameters, agents, verbose=0):
+def run_game(game_parameters, agents, verbose=0, training=False):
     """Play a game, selecting random actions."""
 
     def print_state(state):
@@ -91,10 +94,13 @@ def run_game(game_parameters, agents, verbose=0):
         legal_moves = state.legal_moves()
         move = agents[state.cur_player()].act(observation)
         state.apply_move(move)
+        if training and issubclass(type(agents[state.cur_player()]), ReinforcementAgent):
+            agents[state.cur_player()].incorporateFeedback(state)
         if verbose > 2:
             print_state(state)
             print_observation(observation)
-            print_encoded_observations(obs_encoder, state, game.num_players())
+            if verbose > 3:
+                print_encoded_observations(obs_encoder, state, game.num_players())
             print("")
             print("Number of legal moves: {}".format(len(legal_moves)))
         if verbose > 1:
@@ -107,22 +113,35 @@ def run_game(game_parameters, agents, verbose=0):
         print("")
     if verbose > 0:
         print("score: {}".format(state.score()))
+    return state.score()
 
 
 
+reinforcement_agents = [CardIdentifierAgent]
 
 p = argparse.ArgumentParser(prog='PROG')
 p.add_argument('foo')
 for i in [('-p', 'players', 2, int), ('-c', 'colors', 5, int), ('-r', 'rank', 5, int), ('-hs', 'hand_size', 5, int),
         ('-i', 'max_information_tokens', 8, int), ('-l', 'max_life_tokens', 3, int), ('-s', 'seed', -1, int),
-        ('-v', 'verbose', 0, int), ('-n', 'num_rounds', 1, int)]:
+        ('-v', 'verbose', 0, int), ('-n', 'num_rounds', 1, int), ('-tr', 'training_rounds', 0, int)]:
     p.add_argument(i[0], dest=i[1], default=i[2], type=i[3])
 p.add_argument('-a', dest='agents', default=['baseline', 'baseline'], nargs='*')
 args = vars(p.parse_args(sys.argv))
-agent_dict = {'baseline': BaselineAgent, 'random': RandomAgent}
+agent_dict = {'baseline': BaselineAgent, 'random': RandomAgent, 'cardID': CardIdentifierAgent}
 
+seed(1)
+score_list = []
+training_to_go = args['training_rounds']
+agents=[]
+args['print'] = 0
+for agent in args['agents']:
+    agents.append(agent_dict[agent](args))
 for _ in range(args['num_rounds']):
-    agents=[]
-    for agent in args['agents']:
-        agents.append(agent_dict[agent](args))
-    run_game(args,agents,args['verbose'])
+    if _ == args['num_rounds'] - 1:
+        args['print'] = 1
+    for agent in agents:
+        agent.reset(args)
+    score_list.append(run_game(args, agents, args['verbose'], training = training_to_go > 0))
+    training_to_go -= 1
+print(sum(score_list)/args['num_rounds'])
+

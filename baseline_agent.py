@@ -1,13 +1,10 @@
 from hanabi_learning_environment.rl_env import Agent
-#from run_game import run_game
 from hanabi_learning_environment import pyhanabi
 
-from typing import *
 
 class BaselineAgent(Agent):
 
     def __init__(self, config):
-        #super(BaselineAgent, self).__init__(config)
         # Initialize
         self.config = config
         # Extract max info tokens or set default to 8.
@@ -17,6 +14,9 @@ class BaselineAgent(Agent):
     def playable_card(card, fireworks):
         """A card is playable if it can be placed on the fireworks pile."""
         return card.rank() == fireworks[card.color()]
+
+    def reset(self, config):
+        self.config = config
 
     def act(self, observation: pyhanabi.HanabiObservation):
         """Act based on an observation."""
