@@ -69,7 +69,8 @@ class CardIdentifierAgent(Agent):
             if hint.color() is not None and hint.rank() is not None:
                 if observation.card_playable_on_fireworks(hint.color(), hint.rank()):
                     move = pyhanabi.HanabiMove.get_play_move(card_index)
-                    return move
+                    if move in observation.legal_moves():
+                        return move
         for card_index in range(5):
             playable = True
             for i, prob in enumerate(self.card_identifier.card_priors[card_index]):
@@ -79,7 +80,9 @@ class CardIdentifierAgent(Agent):
                         break
             if playable and observation.life_tokens() < 2:
                 #print('yayyyy')
-                return pyhanabi.HanabiMove.get_play_move(card_index)
+                move = pyhanabi.HanabiMove.get_play_move(card_index)
+                if move in observation.legal_moves():
+                    return move
 
         # Check if it's possible to hint a card to your colleagues.
         fireworks = observation.fireworks()
@@ -171,7 +174,7 @@ class HanabiCardIdentifier:
     @staticmethod
     def normalize(array):
         if sum(array)==0:
-            #print('hi')
+            print('hi')
             return HanabiCardIdentifier.normalize(np.ones(array.shape))
         return array / sum(array)
 
