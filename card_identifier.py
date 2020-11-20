@@ -66,7 +66,7 @@ class CardIdentifierAgent(Agent):
                         card_probs = self.card_identifier.getCardProbs(observation)
                         self.card_identifier.incCardPriorMomentum(card_probs)
                         card_probs = list(card_probs)
-                        if any(i > .3 for i in card_probs[0]):
+                        if any(i > .2 for i in card_probs[0]):
                             self.card_identifier.incResult(True)
                             print(round(self.card_identifier.iter_size,4),end='')
                             print('|',end='')
@@ -100,7 +100,9 @@ class CardIdentifierAgent(Agent):
                         break
             # Sometimes it doesn't work and this stops it from losing
             if playable and observation.life_tokens() > 1:
-                print('yayyyy')
+                print('yay|',end='')
+                if random.random()<0:
+                    print(self.card_identifier.num_iters)
                 move = pyhanabi.HanabiMove.get_play_move(card_index)
                 if self.legal_move(observation.legal_moves(), move):
                     return move
@@ -183,7 +185,6 @@ class CardIdentifierAgent(Agent):
         return features
 
     def feature_extractor(self, observation: pyhanabi.HanabiObservation, card_index: int):
-        num_cards = self.config['rank'] * self.config['colors']
         # Add prior card knowledge
         features = list(self.card_identifier.card_priors[card_index])
         # Add fireworks info
@@ -239,7 +240,7 @@ class HanabiCardIdentifier:
                                for _ in range(config['hand_size'])]
         if activator == 'relu':
             self.activator = lambda x: max(0, x)
-            self.dact = lambda x: 1 if x > 0 else 0
+            self.dact = lambda x: 1 if x >= 0 else 0
         elif activator == 'logistic' or True:
             self.activator = expit
             self.dact = lambda x: x * (1 - x)
@@ -261,7 +262,12 @@ class HanabiCardIdentifier:
     def incCardPriorMomentum(self, new_probs):
         momentum_list = []
         for i in range(5): # Hand size
-            momentum_list.append(self.cp_momentum * self.card_priors[i] + (1 - self.cp_momentum) * new_probs[i])
+            probs = self.cp_momentum * self.card_priors[i] + (1 - self.cp_momentum) * new_probs[i]
+            for j in range(len(self.card_priors[i])):
+                if self.card_priors[i][j] == 0:
+                    probs[j] = 0
+            probs = self.normalize(probs)
+            momentum_list.append(probs)
         self.card_priors = momentum_list
 
     def reset(self, config: Dict):
@@ -270,7 +276,7 @@ class HanabiCardIdentifier:
         self.card_priors = [np.array([3, 2, 2, 2, 1] * 5) for _ in range(config['hand_size'])]
         self.card_priors = [self.normalize(i) for i in self.card_priors]
         self.card_space = [3, 2, 2, 2, 1] * 5
-        self.cp_momentum = max(0, self.cp_momentum-.00)
+        self.cp_momentum = max(0, self.cp_momentum-.005)
 
     def cardUpdate(self, observation: pyhanabi.HanabiObservation, history: pyhanabi.HanabiHistoryItem, move: pyhanabi.HanabiMove):
         cp2=deepcopy(self.card_priors)
@@ -328,12 +334,12 @@ class HanabiCardIdentifier:
 
     def incResult(self, res: bool):
         self.iter_size *= 0.999
-        self.iter_size += 0.001 if res else 0
+        self.iter_size += 0.01 if res else 0
 
     # Call this function to get the step size to update the weights.
     def getStepSize(self) -> float:
-        if self.cp_momentum > 0.95:
-            return 0.5 * max(0.5, 0*(self.num_iters) ** (-1/2))
+        if False and self.cp_momentum > 0.95:
+            return 0.5 * min(0.1, (self.num_iters) ** (-1/2))
         return 0.5 * min(0.5, 0*(self.num_iters) ** (-1/2))
 
     def incorporateCardProbFeedback(self, observation, card, color, rank):
