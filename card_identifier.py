@@ -30,20 +30,26 @@ class CardIdentifierAgent(Agent):
             return None
 
         player = 0
+        # Moves are sorted newest to oldest by default, but we want to update knowledg in chronological order
         prior_actions = observation.last_moves()[-1::-1]
         cards_remaining = self.cards_remaining(observation)
         for i in prior_actions:
             move = i.move()
             if move.type() == 5:
+                # MOVE_TYPE = 5 is a dealing move
                 continue
             if player == 0 and move.type() in [1, 2]:
                 # Current player played or discarded on last turn
 
                 #self.card_identifier.incorporateCardProbFeedback(observation, move.card_index(), i.color(), i.rank())
-                for j in range(move.card_index(),4):
+                for j in range(move.card_index(), 4):
+                    # Shift each card drawn more recently than the discarded card to the left
                     self.card_identifier.card_priors[j] = self.card_identifier.card_priors[j + 1]
+                # Add a new card prior for the new card
                 self.card_identifier.card_priors[4] = HanabiCardIdentifier.normalize(np.array(cards_remaining))
             if player == 0:
+                # Re-weight card priors to account for any new cards we've seen (
+                # e.g. if our cooperator discarded W5, we know our cards aren't W%
                 for index, vals in enumerate(zip(cards_remaining, self.card_identifier.card_space)):
                     if vals[0] < vals[1]:
                         for card in self.card_identifier.card_priors:
@@ -52,32 +58,37 @@ class CardIdentifierAgent(Agent):
                 self.card_identifier.card_space = cards_remaining
                 self.card_identifier.card_priors = [HanabiCardIdentifier.normalize(i) for i in
                                                     self.card_identifier.card_priors]
-                if self.config['print']>10:
+                # Debugging stuff
+                if self.config['print'] > 10:
                     print(111)
                     if all(sum(i)>0 for i in self.card_identifier.card_priors):
                         print(self.card_identifier.getCardProbs(observation))
                     print(222)
 
-            if move.type() in [3,4] and player > 0:
+            # If another player has hinted us...
+            if move.type() in [3, 4] and player > 0:
                 self.card_identifier.cardUpdate(observation, i, move)
             player += 1
 
 
 
         #print(self.card_identifier.card_priors)
+        # Play card if we've been hinted number and color
         for card_index, hint in enumerate(observation.card_knowledge()[0]):
             if hint.color() is not None and hint.rank() is not None:
                 if observation.card_playable_on_fireworks(hint.color(), hint.rank()):
                     move = pyhanabi.HanabiMove.get_play_move(card_index)
                     if move in observation.legal_moves():
                         return move
+        # Play card if we've ruled out from our knowledge the possibility that the card can't be played even if we don't know what it is
         for card_index in range(5):
             playable = True
             for i, prob in enumerate(self.card_identifier.card_priors[card_index]):
-                if prob > 0:
+                if prob > 0.01: # Arbitrary threshold- may need to raise or lower
                     if not observation.card_playable_on_fireworks(i//5, i % 5):
                         playable = False
                         break
+            # Sometimes it doesn't work and this stops it from losing
             if playable and observation.life_tokens() < 2:
                 #print('yayyyy')
                 move = pyhanabi.HanabiMove.get_play_move(card_index)
@@ -115,6 +126,7 @@ class CardIdentifierAgent(Agent):
         return observation.legal_moves()[-1]
 
     def cards_remaining(self, observation: pyhanabi.HanabiObservation):
+        # Determine unknown cards from observation
         card_list = [3,2,2,2,1] * 5
         known_cards = observation.discard_pile()
         hands = observation.observed_hands()
@@ -134,12 +146,13 @@ class CardIdentifierAgent(Agent):
     def feature_extractor(self, observation: pyhanabi.HanabiObservation, card_index: int):
         num_cards = self.config['rank'] * self.config['colors']
         obs_vector = self.encoder.encode(observation)
-        # Add
+        # Add prior card knowledge
         features = list(self.card_identifier.card_priors[card_index])
         offset = num_cards * self.config['hand_size'] + self.config['players'] + 2 * num_cards
-        # Fireworks
-        features += obs_vector[offset : offset + num_cards]
+        # Add fireworks info
+        features += obs_vector[offset: offset + num_cards]
         offset += num_cards + 8 + 3 + 2 * num_cards - self.config['hand_size'] * self.config['players']
+        # Add most recent hint info
         features += obs_vector[offset + 6:offset + 21]
         return features
 
