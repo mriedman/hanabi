@@ -59,11 +59,13 @@ class CardIdentifierAgent(Agent):
                 self.card_identifier.card_priors = [HanabiCardIdentifier.normalize(i) for i in
                                                     self.card_identifier.card_priors]
                 # Debugging stuff
-                if self.config['print'] > 10:
-                    print(111)
+                if self.config['print'] > 10 or True:
+                    #print(111)
                     if all(sum(i)>0 for i in self.card_identifier.card_priors):
-                        print(self.card_identifier.getCardProbs(observation))
-                    print(222)
+                        card_probs = list(self.card_identifier.getCardProbs(observation))
+                        if any(i > .07 for i in card_probs[0]):
+                            print(card_probs)
+                    #print(222)
 
             # If another player has hinted us...
             if move.type() in [3, 4] and player > 0:
@@ -239,13 +241,6 @@ class HanabiCardIdentifier:
         return array / sum(array)
 
     def reset(self, config: Dict):
-        rng = np.random.default_rng()
-        feature_length = config['rank'] * config['colors'] * 2 + config['rank'] + config['colors'] + config['hand_size']
-        self.index_matrices = [[rng.random((30, feature_length)),
-                                rng.random((20, 30)),
-                                rng.random((20, 20)),
-                                rng.random((config['rank'] * config['colors'], 20))]
-                               for _ in range(config['hand_size'])]
         self.activator = expit
         # self.card_priors = np.array([1 for _ in range(config['rank'] * config['colors'])])
         self.card_priors = [np.array([3, 2, 2, 2, 1] * 5) for _ in range(config['hand_size'])]
@@ -276,7 +271,7 @@ class HanabiCardIdentifier:
 
 
     # Return the __ associated with the weights and features
-    def getCardProbs(self, state: pyhanabi.HanabiObservation) -> List[float]:
+    def getCardProbs(self, state: pyhanabi.HanabiObservation) -> List:
         prob_list = []
         for index in range(5):
             scores = self.featureExtractor(state, index)
