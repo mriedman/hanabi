@@ -41,7 +41,7 @@ class CardIdentifierAgent(Agent):
             if player == 0 and move.type() in [1, 2]:
                 # Current player played or discarded on last turn
 
-                #self.card_identifier.incorporateCardProbFeedback(observation, move.card_index(), i.color(), i.rank())
+                self.card_identifier.incorporateCardProbFeedback(observation, move.card_index(), i.color(), i.rank())
                 for j in range(move.card_index(), 4):
                     # Shift each card drawn more recently than the discarded card to the left
                     self.card_identifier.card_priors[j] = self.card_identifier.card_priors[j + 1]
@@ -72,13 +72,13 @@ class CardIdentifierAgent(Agent):
 
 
 
-        #print(self.card_identifier.card_priors)
+        # print(self.card_identifier.card_priors)
         # Play card if we've been hinted number and color
         for card_index, hint in enumerate(observation.card_knowledge()[0]):
             if hint.color() is not None and hint.rank() is not None:
                 if observation.card_playable_on_fireworks(hint.color(), hint.rank()):
                     move = pyhanabi.HanabiMove.get_play_move(card_index)
-                    if move in observation.legal_moves():
+                    if self.legal_move(observation.legal_moves(), move):
                         return move
         # Play card if we've ruled out from our knowledge the possibility that the card can't be played even if we don't know what it is
         for card_index in range(5):
@@ -92,7 +92,7 @@ class CardIdentifierAgent(Agent):
             if playable and observation.life_tokens() < 2:
                 #print('yayyyy')
                 move = pyhanabi.HanabiMove.get_play_move(card_index)
-                if move in observation.legal_moves():
+                if self.legal_move(observation.legal_moves(), move):
                     return move
 
         # Check if it's possible to hint a card to your colleagues.
@@ -107,23 +107,36 @@ class CardIdentifierAgent(Agent):
                     if BaselineAgent.playable_card(card,
                                                    fireworks) and hint.color() is None:
                         move = pyhanabi.HanabiMove.get_reveal_color_move(player_offset, card.color())
-                        for i in observation.legal_moves():
-                            if i.type() == move.type() and i.target_offset() == move.target_offset() and i.color() == move.color:
-                                return i
-                        return move
+                        if self.legal_move(observation.legal_moves(), move):
+                            return move
+                        # return move
                     if BaselineAgent.playable_card(card,
                                                    fireworks) and hint.rank() is None:
                         move = pyhanabi.HanabiMove.get_reveal_rank_move(player_offset, card.rank())
-                        for i in observation.legal_moves():
-                            if i.type() == move.type() and i.target_offset() == move.target_offset() and i.rank() == move.rank():
-                                return i
-                        return move.to_dict()
+                        if self.legal_move(observation.legal_moves(), move):
+                            return move
+                        # return move.to_dict()
 
         # If no card is hintable then discard or play.
         for i in observation.legal_moves():
             if i.type() == pyhanabi.HanabiMoveType.DISCARD:
                 return i
         return observation.legal_moves()[-1]
+
+    @staticmethod
+    def legal_move(legal_moves: List[pyhanabi.HanabiMove], move: pyhanabi.HanabiMove):
+        for pos_move in legal_moves:
+            if pos_move.type() == move.type():
+                if move.type() == 1 or move.type() == 2:
+                    if move.card_index() == pos_move.card_index():
+                        return True
+                if move.type() == 3:
+                    if move.color() == pos_move.color() and move.target_offset() == pos_move.target_offset():
+                        return True
+                if move.type() == 4:
+                    if move.rank() == pos_move.rank() and move.target_offset() == pos_move.target_offset():
+                        return True
+        return False
 
     def cards_remaining(self, observation: pyhanabi.HanabiObservation):
         # Determine unknown cards from observation
@@ -143,7 +156,7 @@ class CardIdentifierAgent(Agent):
             offset += 5
         return card_list
 
-    def feature_extractor(self, observation: pyhanabi.HanabiObservation, card_index: int):
+    def feature_extractor1(self, observation: pyhanabi.HanabiObservation, card_index: int):
         num_cards = self.config['rank'] * self.config['colors']
         obs_vector = self.encoder.encode(observation)
         # Add prior card knowledge
@@ -156,10 +169,44 @@ class CardIdentifierAgent(Agent):
         features += obs_vector[offset + 6:offset + 21]
         return features
 
+    def feature_extractor(self, observation: pyhanabi.HanabiObservation, card_index: int):
+        num_cards = self.config['rank'] * self.config['colors']
+        # Add prior card knowledge
+        features = list(self.card_identifier.card_priors[card_index])
+        # Add fireworks info
+        fireworks = observation.fireworks()
+        for color in fireworks:
+            for rank in range(5):
+                if rank == color:
+                    features.append(1)
+                else:
+                    features.append(0)
+        # Add most recent hint info
+        last_moves = observation.last_moves()
+        opp_move = None
+        for move in last_moves:
+            if not move.move().type() == 5:
+                opp_move = move
+                break
+        if opp_move is None or opp_move.move().type() < 3:
+            features += [0] * 15
+        elif opp_move.move().type() == 3:
+            features += [1 if i == opp_move.move().color() else 0 for i in range(5)]
+            features += [0]*5
+            features += [1 if i in opp_move.card_info_revealed() else 0 for i in range(5)]
+        elif opp_move.move().type() == 4:
+            features += [0]*5
+            features += [1 if i == opp_move.move().rank() else 0 for i in range(5)]
+            features += [1 if i in opp_move.card_info_revealed() else 0 for i in range(5)]
+        if card_index == 0:
+            pass
+        return features
+
     def reset(self, config):
         self.config = config
         if config['print']==1:
             self.card_identifier.printt=1
+        self.card_identifier.reset(config)
 
 
 
@@ -190,6 +237,21 @@ class HanabiCardIdentifier:
             print('hi')
             return HanabiCardIdentifier.normalize(np.ones(array.shape))
         return array / sum(array)
+
+    def reset(self, config: Dict):
+        rng = np.random.default_rng()
+        feature_length = config['rank'] * config['colors'] * 2 + config['rank'] + config['colors'] + config['hand_size']
+        self.index_matrices = [[rng.random((30, feature_length)),
+                                rng.random((20, 30)),
+                                rng.random((20, 20)),
+                                rng.random((config['rank'] * config['colors'], 20))]
+                               for _ in range(config['hand_size'])]
+        self.activator = expit
+        # self.card_priors = np.array([1 for _ in range(config['rank'] * config['colors'])])
+        self.card_priors = [np.array([3, 2, 2, 2, 1] * 5) for _ in range(config['hand_size'])]
+        self.card_priors = [self.normalize(i) for i in self.card_priors]
+        self.card_space = [3, 2, 2, 2, 1] * 5
+        self.num_iters = 0
 
     def cardUpdate(self, observation: pyhanabi.HanabiObservation, history: pyhanabi.HanabiHistoryItem, move: pyhanabi.HanabiMove):
         cp2=deepcopy(self.card_priors)
