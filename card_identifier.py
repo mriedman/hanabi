@@ -7,6 +7,7 @@ from typing import Tuple, Any, Callable, Dict, List
 from collections import defaultdict
 import random
 from baseline_agent import BaselineAgent
+from adv_human import AdvancedHumanAgent
 from copy import deepcopy
 
 
@@ -18,7 +19,7 @@ class CardIdentifierAgent(Agent):
         # Extract max info tokens or set default to 8.
         self.max_information_tokens = config.get('information_tokens', 8)
         # Set up card identifier
-        self.card_identifier = HanabiCardIdentifier(.05, self.feature_extractor, config)
+        self.card_identifier = HanabiCardIdentifier(.05, self.feature_extractor, config, activator='relu')
         # Set up encoder
         self.encoder = pyhanabi.ObservationEncoder(pyhanabi.HanabiGame(config))
         self.agent = BaselineAgent(config)
@@ -62,9 +63,16 @@ class CardIdentifierAgent(Agent):
                 if self.config['print'] > 10 or True:
                     #print(111)
                     if all(sum(i)>0 for i in self.card_identifier.card_priors):
-                        card_probs = list(self.card_identifier.getCardProbs(observation))
-                        if any(i > .07 for i in card_probs[0]):
-                            print(card_probs)
+                        card_probs = self.card_identifier.getCardProbs(observation)
+                        self.card_identifier.incCardPriorMomentum(card_probs)
+                        card_probs = list(card_probs)
+                        if any(i > .3 for i in card_probs[0]):
+                            self.card_identifier.incResult(True)
+                            print(round(self.card_identifier.iter_size,4),end='')
+                            print('|',end='')
+                        else:
+                            self.card_identifier.incResult(False)
+                            #print(card_probs)
                     #print(222)
 
             # If another player has hinted us...
@@ -86,17 +94,18 @@ class CardIdentifierAgent(Agent):
         for card_index in range(5):
             playable = True
             for i, prob in enumerate(self.card_identifier.card_priors[card_index]):
-                if prob > 0.01: # Arbitrary threshold- may need to raise or lower
+                if prob > 0.02: # Arbitrary threshold- may need to raise or lower
                     if not observation.card_playable_on_fireworks(i//5, i % 5):
                         playable = False
                         break
             # Sometimes it doesn't work and this stops it from losing
-            if playable and observation.life_tokens() < 2:
-                #print('yayyyy')
+            if playable and observation.life_tokens() > 1:
+                print('yayyyy')
                 move = pyhanabi.HanabiMove.get_play_move(card_index)
                 if self.legal_move(observation.legal_moves(), move):
                     return move
 
+        #return AdvancedHumanAgent.act(self, observation)
         # Check if it's possible to hint a card to your colleagues.
         fireworks = observation.fireworks()
         if observation.information_tokens() > 0:
@@ -105,12 +114,14 @@ class CardIdentifierAgent(Agent):
                 player_hand = observation.observed_hands()[player_offset]
                 player_hints = observation.card_knowledge()[player_offset]
                 # Check if the card in the hand of the opponent is playable.
-                for card, hint in zip(player_hand, player_hints):
+                for idx, tpl in enumerate(zip(player_hand, player_hints)):
+                    card, hint = tpl
                     if BaselineAgent.playable_card(card,
-                                                   fireworks) and hint.color() is None:
-                        move = pyhanabi.HanabiMove.get_reveal_color_move(player_offset, card.color())
-                        if self.legal_move(observation.legal_moves(), move):
-                            return move
+                                                        fireworks) and hint.color() is None:
+                        if True or not any(card1.color() == card.color() for card1 in player_hand[idx + 1:]):
+                            move = pyhanabi.HanabiMove.get_reveal_color_move(player_offset, card.color())
+                            if self.legal_move(observation.legal_moves(), move):
+                                return move
                         # return move
                     if BaselineAgent.playable_card(card,
                                                    fireworks) and hint.rank() is None:
@@ -214,7 +225,7 @@ class CardIdentifierAgent(Agent):
 
 
 class HanabiCardIdentifier:
-    def __init__(self, discount: float, feature_extractor: Callable, config: Dict, exploration_prob=0):
+    def __init__(self, discount: float, feature_extractor: Callable, config: Dict, exploration_prob=0, activator : str = 'logistic' ):
         self.discount = discount
         self.featureExtractor = feature_extractor
         self.explorationProb = exploration_prob
@@ -222,23 +233,36 @@ class HanabiCardIdentifier:
         rng = np.random.default_rng()
         feature_length = config['rank'] * config['colors'] * 2 + config['rank'] + config['colors'] + config['hand_size']
         self.index_matrices = [[rng.random((30, feature_length)),
-                                rng.random((20, 30)),
-                                rng.random((20, 20)),
-                                rng.random((config['rank'] * config['colors'], 20))]
+                                #rng.random((30, 30)),
+                                #rng.random((20, 20)),
+                                rng.random((config['rank'] * config['colors'], 30))]
                                for _ in range(config['hand_size'])]
-        self.activator = expit
+        if activator == 'relu':
+            self.activator = lambda x: max(0, x)
+            self.dact = lambda x: 1 if x > 0 else 0
+        elif activator == 'logistic' or True:
+            self.activator = expit
+            self.dact = lambda x: x * (1 - x)
         #self.card_priors = np.array([1 for _ in range(config['rank'] * config['colors'])])
         self.card_priors = [np.array([3,2,2,2,1]*5) for _ in range(config['hand_size'])]
         self.card_priors = [self.normalize(i) for i in self.card_priors]
         self.card_space = [3,2,2,2,1]*5
-        self.num_iters = 0
+        self.num_iters = 1
+        self.iter_size = 0.01
+        self.cp_momentum = 1
 
     @staticmethod
     def normalize(array):
         if sum(array)==0:
-            print('hi')
+            #print('hi')
             return HanabiCardIdentifier.normalize(np.ones(array.shape))
         return array / sum(array)
+
+    def incCardPriorMomentum(self, new_probs):
+        momentum_list = []
+        for i in range(5): # Hand size
+            momentum_list.append(self.cp_momentum * self.card_priors[i] + (1 - self.cp_momentum) * new_probs[i])
+        self.card_priors = momentum_list
 
     def reset(self, config: Dict):
         self.activator = expit
@@ -246,7 +270,7 @@ class HanabiCardIdentifier:
         self.card_priors = [np.array([3, 2, 2, 2, 1] * 5) for _ in range(config['hand_size'])]
         self.card_priors = [self.normalize(i) for i in self.card_priors]
         self.card_space = [3, 2, 2, 2, 1] * 5
-        self.num_iters = 0
+        self.cp_momentum = max(0, self.cp_momentum-.00)
 
     def cardUpdate(self, observation: pyhanabi.HanabiObservation, history: pyhanabi.HanabiHistoryItem, move: pyhanabi.HanabiMove):
         cp2=deepcopy(self.card_priors)
@@ -302,24 +326,29 @@ class HanabiCardIdentifier:
         else:
             return max((self.getQ(state, action), action) for action in state.legal_moves())[1]'''
 
+    def incResult(self, res: bool):
+        self.iter_size *= 0.999
+        self.iter_size += 0.001 if res else 0
+
     # Call this function to get the step size to update the weights.
     def getStepSize(self) -> float:
-        #return 0.5 / math.sqrt(self.num_iters)
-        return 0.1
+        if self.cp_momentum > 0.95:
+            return 0.5 * max(0.5, 0*(self.num_iters) ** (-1/2))
+        return 0.5 * min(0.5, 0*(self.num_iters) ** (-1/2))
 
     def incorporateCardProbFeedback(self, observation, card, color, rank):
-        self.num_iters += 1
+        self.num_iters += self.iter_size
         index = 5 * color + rank
         results = list(self.getCardProbLayers(observation, card))
         errors = [np.zeros((i.shape[0],)) for i in self.index_matrices[card]]
         matrices = self.index_matrices[card]
         for j, col in enumerate(errors[-1]):
             target = 1 if j == index else 0
-            errors[-1][j] = (target - results[-1][j]) * results[-1][j] * (1 - results[-1][j])
+            errors[-1][j] = (target - results[-1][j]) * self.dact(results[-1][j])
         for l_num, layer in zip(range(len(errors)-2, -1, -1), errors[-2::-1]):
             for j, col in enumerate(errors[l_num]):
                 layer[j] = sum(errors[l_num+1][k] * matrices[l_num+1][k][j] for k in range(len(errors[l_num+1]))) * \
-                           results[l_num+1][j] * (1 - results[l_num+1][j])
+                           self.dact(results[l_num+1][j])
         for l_num, layer in enumerate(matrices):
             for i, row in enumerate(layer):
                 for j, col in enumerate(row):

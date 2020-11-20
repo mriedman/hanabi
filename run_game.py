@@ -16,6 +16,7 @@ from __future__ import print_function
 from baseline_agent import BaselineAgent
 from random_agent import RandomAgent
 from card_identifier import CardIdentifierAgent
+from adv_human import AdvancedHumanAgent
 import sys
 import argparse
 from random import seed
@@ -127,7 +128,7 @@ for i in [('-p', 'players', 2, int), ('-c', 'colors', 5, int), ('-r', 'rank', 5,
     p.add_argument(i[0], dest=i[1], default=i[2], type=i[3])
 p.add_argument('-a', dest='agents', default=['baseline', 'baseline'], nargs='*')
 args = vars(p.parse_args(sys.argv))
-agent_dict = {'baseline': BaselineAgent, 'random': RandomAgent, 'cardID': CardIdentifierAgent}
+agent_dict = {'baseline': BaselineAgent, 'random': RandomAgent, 'cardID': CardIdentifierAgent, 'advh': AdvancedHumanAgent}
 
 seed(1)
 score_list = []
@@ -137,6 +138,8 @@ args['print'] = 0
 for agent in args['agents']:
     agents.append(agent_dict[agent](args))
 for _ in range(args['num_rounds']):
+    if _%10 == 0:
+        print('#################'+str(_))
     if _ == args['num_rounds'] - 1:
         args['print'] = 1
     for agent in agents:
