@@ -146,6 +146,42 @@ for _ in range(args['num_rounds']):
         agent.reset(args)
     score_list.append(run_game(args, agents, args['verbose'], training = training_to_go > 0))
     training_to_go -= 1
+'''
+    <li>
+        <code>-p</code>: number of players
+        <br>
+        Default: <code>2</code>
+    </li>
+    <li>
+        <code>-c</code>: number of colors
+        <br>
+        Default: <code>5</code>
+    </li>
+    <li>
+        <code>-r</code>: number of ranks
+        <br>
+        Default: <code>5</code>
+    </li>
+    <li>
+        <code>-hs</code>: hand size
+        <br>
+        Default: <code>r</code>
+    </li>
+    <li>
+        <code>-i</code>: number of info tokens
+        <br>
+        Default: <code>8</code>
+    </li>
+    <li>
+        <code>-l</code>: number of life tokens
+        <br>
+        Default: <code>3</code>
+    </li>
+    <li>
+        <code>-s</code>: random number generator seed
+        <br>
+        Default: <code>-1</code> (random seed)
+    </li>'''
 print(sum(score_list)/args['num_rounds'])
 print(score_list)
 

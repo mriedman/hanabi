@@ -11,41 +11,6 @@ run_game.py command line arguments:
         Possible agents are <code>baseline</code>, <code>random</code>, <code>advh</code> (Advanced Human), and <code>cardID</code> (Card Identifier)
     </li>
     <li>
-        <code>-p</code>: number of players
-        <br>
-        Default: <code>2</code>
-    </li>
-    <li>
-        <code>-c</code>: number of colors
-        <br>
-        Default: <code>5</code>
-    </li>
-    <li>
-        <code>-r</code>: number of ranks
-        <br>
-        Default: <code>5</code>
-    </li>
-    <li>
-        <code>-hs</code>: hand size
-        <br>
-        Default: <code>r</code>
-    </li>
-    <li>
-        <code>-i</code>: number of info tokens
-        <br>
-        Default: <code>8</code>
-    </li>
-    <li>
-        <code>-l</code>: number of life tokens
-        <br>
-        Default: <code>3</code>
-    </li>
-    <li>
-        <code>-s</code>: random number generator seed
-        <br>
-        Default: <code>-1</code> (random seed)
-    </li>
-    <li>
         <code>-v</code>: verbosity (0 for no info, 1 for scores only, 2 for some turn info, 3 for everything)
         <br>
         Default: <code>0</code>
