@@ -100,7 +100,7 @@ class CardIdentifierAgent(Agent):
                         break
             # Sometimes it doesn't work and this stops it from losing
             if playable and observation.life_tokens() > 1:
-                print('yay|',end='')
+                #print('yay|',end='')
                 if random.random()<0:
                     print(self.card_identifier.num_iters)
                 move = pyhanabi.HanabiMove.get_play_move(card_index)

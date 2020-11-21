@@ -138,7 +138,7 @@ args['print'] = 0
 for agent in args['agents']:
     agents.append(agent_dict[agent](args))
 for _ in range(args['num_rounds']):
-    if _%10 == 0:
+    if _%50 == 0:
         print('#################'+str(_))
     if _ == args['num_rounds'] - 1:
         args['print'] = 1
@@ -147,4 +147,5 @@ for _ in range(args['num_rounds']):
     score_list.append(run_game(args, agents, args['verbose'], training = training_to_go > 0))
     training_to_go -= 1
 print(sum(score_list)/args['num_rounds'])
+print(score_list)
 
