@@ -7,6 +7,8 @@ run_game.py command line arguments:
         <code>-a baseline random</code> would have <code>BaselineAgent</code> play against <code>RandomAgent</code>
         <br>
         Default: <code>baseline baseline</code>
+        <br>
+        Possible agents are <code>baseline</code>, <code>random</code>, <code>advh</code> (Advanced Human), and <code>cardID</code> (Card Identifier)
     </li>
     <li>
         <code>-p</code>: number of players
@@ -52,11 +54,6 @@ run_game.py command line arguments:
         <code>-n</code>: number of rounds played
         <br>
         Default: <code>1</code>
-    </li>
-    <li>
-        <code>-</code>: 
-        <br>
-        Default: <code></code>
     </li>
 </ul>
 
